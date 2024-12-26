@@ -162,21 +162,8 @@ function M.setup(opts)
 	-- Find an available port
 	local port = find_available_port()
 
-	-- Create a function that will be called to start the server
-	local server_started = false
-	local function ensure_server()
-		if server_started then
-			return
-		end
-		start_server(port)
-		server_started = true
-	end
-
-	-- Update the config with the selected port and lazy start
-	M.config.cmd = function()
-		ensure_server()
-		return vim.lsp.rpc.connect("127.0.0.1", port)
-	end
+	-- Update the config with the selected port
+	M.config.cmd = vim.lsp.rpc.connect("127.0.0.1", port)
 	M.config.port = port
 
 	-- Merge user config with defaults
@@ -206,19 +193,35 @@ function M.setup(opts)
 			},
 			docs = {
 				description = [[
-					RefactorEx Language Server for Elixir
-					https://github.com/synic/refactorex
-				]],
+	                RefactorEx Language Server for Elixir
+	                https://github.com/synic/refactorex
+	            ]],
 			},
 		}
 	end
 
-	-- Setup LSP client
-	if lspconfig.refactorex and lspconfig.refactorex.setup then
-		lspconfig.refactorex.setup(opts)
-	else
-		vim.notify("Failed to initialize refactorex LSP", vim.log.levels.ERROR)
-	end
+	-- Create an autocommand to start the server and setup LSP on first Elixir file
+	local server_started = false
+	vim.api.nvim_create_autocmd("FileType", {
+		pattern = "elixir",
+		callback = function()
+			if not server_started then
+				start_server(port)
+				server_started = true
+				-- Setup LSP client after server starts
+				vim.defer_fn(function()
+					if lspconfig.refactorex and lspconfig.refactorex.setup then
+						lspconfig.refactorex.setup(opts)
+						-- Force LSP to attach to the current buffer
+						vim.cmd("LspStart refactorex")
+					else
+						vim.notify("Failed to initialize refactorex LSP", vim.log.levels.ERROR)
+					end
+				end, 1000) -- Give the server a second to start
+			end
+		end,
+		once = true,
+	})
 end
 
 return M
