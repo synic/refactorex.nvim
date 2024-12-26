@@ -162,12 +162,22 @@ function M.setup(opts)
 	-- Find an available port
 	local port = find_available_port()
 
-	-- Update the config with the selected port
-	M.config.cmd = vim.lsp.rpc.connect("127.0.0.1", port)
-	M.config.port = port
+	-- Create a function that will be called to start the server
+	local server_started = false
+	local function ensure_server()
+		if server_started then
+			return
+		end
+		start_server(port)
+		server_started = true
+	end
 
-	-- Start the server
-	start_server(port)
+	-- Update the config with the selected port and lazy start
+	M.config.cmd = function()
+		ensure_server()
+		return vim.lsp.rpc.connect("127.0.0.1", port)
+	end
+	M.config.port = port
 
 	-- Merge user config with defaults
 	opts = vim.tbl_deep_extend("force", M.config, opts or {})
