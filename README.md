@@ -14,7 +14,7 @@ A Neovim plugin for [RefactorEx - Elixir refactoring tool](https://github.com/gp
 
 ```lua
 {
-  "gp-pereira/refactorex.nvim",
+  "synic/refactorex.nvim",
   dependencies = {
     "nvim-lua/plenary.nvim",
   },
@@ -36,7 +36,7 @@ A Neovim plugin for [RefactorEx - Elixir refactoring tool](https://github.com/gp
 Example using [packer.nvim](https://github.com/wbthomason/packer.nvim):
 ```lua
 use {
-  'gp-pereira/refactorex.nvim',
+  'synic/refactorex.nvim',
   requires = { 'nvim-lua/plenary.nvim' },
   run = './build.sh'
 }
