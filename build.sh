@@ -3,7 +3,7 @@
 # Exit on error
 set -e
 
-VERSION=$(cat "$(dirname "$0")/version.txt")
+VERSION=$(cat "$(dirname "$0")/.version.txt")
 if [ -n "$XDG_DATA_HOME" ]; then
   DATA_DIR="$XDG_DATA_HOME/nvim/refactorex"
 else

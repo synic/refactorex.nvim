@@ -18,26 +18,19 @@ A Neovim plugin for [RefactorEx - Elixir refactoring tool](https://github.com/gp
   dependencies = {
     "nvim-lua/plenary.nvim",
   },
-  build = "./build.sh",
-  cmd = "RefactorExDownload",
+  ft = "elixir",  -- only if you want to lazy load
   config = true,
 }
 ```
-
 ### Without lazy.nvim (manual installation)
 
 1. Install the plugin using your preferred package manager
 2. Install plenary.nvim
-3. Download and setup RefactorEx by running this command in Neovim:
-```vim
-:lua require('refactorex').ensure_refactorex()
-```
 
 Example using [packer.nvim](https://github.com/wbthomason/packer.nvim):
 ```lua
 use {
   'synic/refactorex.nvim',
   requires = { 'nvim-lua/plenary.nvim' },
-  run = './build.sh'
 }
 ```
