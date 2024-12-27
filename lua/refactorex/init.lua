@@ -10,13 +10,10 @@ local default_port = 6890
 
 local M = {}
 
--- Get the data directory for the plugin
 local function get_install_dir()
 	return Path:new(vim.fn.stdpath("data")):joinpath("refactorex")
 end
 
--- Check if a port is available
--- Check if a port is available
 local function is_port_available(port)
 	---@diagnostic disable-next-line: missing-fields
 	local result = Job:new({
@@ -28,13 +25,11 @@ local function is_port_available(port)
 	return #result == 0
 end
 
--- Find an available port starting from default
 local function find_available_port()
 	if is_port_available(default_port) then
 		return default_port
 	end
 
-	-- Try ports from default_port + 1 to default_port + 100
 	for port = default_port + 1, default_port + 100 do
 		if is_port_available(port) then
 			return port
@@ -44,7 +39,6 @@ local function find_available_port()
 	error("No available ports found")
 end
 
--- Default config
 M.config = {
 	filetypes = { "elixir" },
 	cmd = vim.lsp.rpc.connect("127.0.0.1", default_port),
@@ -56,22 +50,18 @@ M.config = {
 	settings = {},
 }
 
--- Download and extract RefactorEx source
 function M.ensure_refactorex()
 	local install_dir = get_install_dir()
 	local tar_file = install_dir:joinpath(string.format("refactorex-%s.tar.gz", refactorex_version))
 
-	-- Create install directory if it doesn't exist
 	if not install_dir:exists() then
 		install_dir:mkdir({ parents = true })
 	end
 
-	-- Check if already downloaded and extracted
 	if install_dir:joinpath(string.format("refactorex-%s", refactorex_version)):exists() then
 		return
 	end
 
-	-- Download the tar.gz file
 	---@diagnostic disable-next-line: missing-fields
 	local download_job = Job:new({
 		command = "curl",
@@ -89,7 +79,6 @@ function M.ensure_refactorex()
 				return
 			end
 
-			-- Extract the tar.gz file
 			---@diagnostic disable-next-line: missing-fields
 			Job:new({
 				command = "tar",
@@ -99,10 +88,8 @@ function M.ensure_refactorex()
 						vim.notify("Failed to extract RefactorEx", vim.log.levels.ERROR)
 						return
 					end
-					-- Remove the tar file after successful extraction
 					tar_file:rm()
 
-					-- Run mix deps.get in the extracted directory
 					---@diagnostic disable-next-line: missing-fields
 					Job:new({
 						command = "mix",
@@ -151,7 +138,6 @@ end
 function M.setup(opts)
 	create_commands()
 
-	-- Check if RefactorEx is installed
 	local start_script = Path:new(get_install_dir()):joinpath("refactorex-" .. refactorex_version .. "/bin/start")
 
 	if not start_script:exists() then
@@ -159,17 +145,6 @@ function M.setup(opts)
 		return
 	end
 
-	-- Find an available port
-	local port = find_available_port()
-
-	-- Update the config with the selected port
-	M.config.cmd = vim.lsp.rpc.connect("127.0.0.1", port)
-	M.config.port = port
-
-	-- Merge user config with defaults
-	opts = vim.tbl_deep_extend("force", M.config, opts or {})
-
-	-- Register the server configuration
 	if not configs.refactorex then
 		configs.refactorex = {
 			default_config = {
@@ -200,19 +175,24 @@ function M.setup(opts)
 		}
 	end
 
-	-- Create an autocommand to start the server and setup LSP on first Elixir file
 	local server_started = false
 	vim.api.nvim_create_autocmd("FileType", {
 		pattern = "elixir",
 		callback = function()
 			if not server_started then
+				local port = find_available_port()
+
+				M.config.cmd = vim.lsp.rpc.connect("127.0.0.1", port)
+				M.config.port = port
+
+				opts = vim.tbl_deep_extend("force", M.config, opts or {})
+
 				start_server(port)
 				server_started = true
-				-- Setup LSP client after server starts
+
 				vim.defer_fn(function()
 					if lspconfig.refactorex and lspconfig.refactorex.setup then
 						lspconfig.refactorex.setup(opts)
-						-- Force LSP to attach to the current buffer
 						vim.cmd("LspStart refactorex")
 					else
 						vim.notify("Failed to initialize refactorex LSP", vim.log.levels.ERROR)

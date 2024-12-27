@@ -12,21 +12,16 @@ fi
 ARCHIVE="refactorex-${VERSION}.tar.gz"
 DOWNLOAD_URL="https://github.com/gp-pereira/refactorex/archive/refs/tags/${VERSION}.tar.gz"
 
-# Create data directory
 mkdir -p "$DATA_DIR"
 
-# Download the archive
 printf "Downloading RefactorEx %s...\n" "$VERSION"
 curl -L --fail "$DOWNLOAD_URL" -o "$DATA_DIR/$ARCHIVE"
 
-# Extract the archive
 printf "Extracting archive...\n"
 tar xzf "$DATA_DIR/$ARCHIVE" -C "$DATA_DIR"
 
-# Clean up the archive
 rm "$DATA_DIR/$ARCHIVE"
 
-# Download Elixir dependencies
 cd "$DATA_DIR/refactorex-$VERSION/"
 mix deps.get
 
