@@ -41,9 +41,7 @@ end
 
 M.config = {
 	filetypes = { "elixir" },
-	cmd = vim.lsp.rpc.connect("127.0.0.1", default_port),
-	transport = "tcp",
-	port = default_port,
+	cmd = { "nc", "127.0.0.1", tostring(default_port) },
 	root_dir = function(fname)
 		return require("lspconfig").util.root_pattern("mix.exs")(fname)
 	end,
@@ -182,9 +180,7 @@ function M.setup(opts)
 			if not server_started then
 				local port = find_available_port()
 
-				M.config.cmd = vim.lsp.rpc.connect("127.0.0.1", port)
-				M.config.port = port
-
+				M.config.cmd = { "nc", "127.0.0.1", tostring(port) }
 				opts = vim.tbl_deep_extend("force", M.config, opts or {})
 
 				start_server(port)
