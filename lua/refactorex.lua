@@ -5,7 +5,7 @@ local Job = require("plenary.job")
 local Path = require("plenary.path")
 
 local refactorex_version =
-	vim.fn.readfile(vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h:h") .. "/refactorex-version.txt")[1]
+	vim.fn.readfile(vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h") .. "/refactorex-version.txt")[1]
 local github_url = "https://github.com/gp-pereira/refactorex"
 
 local M = {
@@ -29,7 +29,7 @@ end
 
 local function apply_stdio_patch(install_path, callback)
 	local patch_source = Path:new(vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h"))
-		:joinpath("../../patches/stdio-0.1.28.patch")
+		:joinpath("../patches/stdio-0.1.28.patch")
 
 	if not patch_source:exists() then
 		if callback then
@@ -80,7 +80,7 @@ local function apply_stdio_patch(install_path, callback)
 end
 
 local function check_dependencies()
-	local required_commands = { "nc", "curl", "tar", "mix", "patch" }
+	local required_commands = { "nc", "curl", "tar", "mix", "patch", "chmod" }
 	for _, cmd in ipairs(required_commands) do
 		if vim.fn.executable(cmd) ~= 1 then
 			error(string.format("Required command '%s' not found in PATH", cmd))
