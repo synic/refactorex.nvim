@@ -5,20 +5,17 @@ local Job = require("plenary.job")
 local Path = require("plenary.path")
 
 local refactorex_version =
-	vim.fn.readfile(vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h:h") .. "/.version.txt")[1]
-local default_port = 6890
-local server_start_timeout = 2500
+	vim.fn.readfile(vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h:h") .. "/refactorex-version.txt")[1]
 local github_url = "https://github.com/gp-pereira/refactorex"
 
 local M = {
 	config = {
 		filetypes = { "elixir" },
-		cmd = { "nc", "127.0.0.1", tostring(default_port) },
+		cmd = {},
 		root_dir = function(fname)
 			return require("lspconfig").util.root_pattern("mix.exs")(fname)
 		end,
 		settings = {},
-		server_start_timeout = server_start_timeout,
 		github_url = github_url,
 	},
 	installing = false,
@@ -30,32 +27,60 @@ local function get_install_dir()
 	return Path:new(vim.fn.stdpath("data")):joinpath("refactorex")
 end
 
-local function is_port_available(port)
-	---@diagnostic disable-next-line: missing-fields
-	local result = Job:new({
-		command = "lsof",
-		args = { "-i", ":" .. tostring(port) },
-	}):sync()
+local function apply_stdio_patch(install_path, callback)
+	local patch_source = Path:new(vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h"))
+		:joinpath("../../patches/stdio-0.1.28.patch")
 
-	return #result == 0
-end
-
-local function find_available_port()
-	if is_port_available(default_port) then
-		return default_port
-	end
-
-	for port = default_port + 1, default_port + 100 do
-		if is_port_available(port) then
-			return port
+	if not patch_source:exists() then
+		if callback then
+			callback(false)
 		end
+		return
 	end
 
-	error("No available ports found in range " .. default_port .. "-" .. (default_port + 100))
+	---@diagnostic disable-next-line: missing-fields
+	Job:new({
+		command = "patch",
+		args = { "-p1", "-d", install_path:absolute() },
+		writer = patch_source:read(),
+		on_exit = function(j, return_val)
+			if return_val == 0 and j:result()[1]:match("patching file") then
+				local start_stdio_script = install_path:joinpath("bin/start-stdio")
+				if start_stdio_script:exists() then
+					---@diagnostic disable-next-line: missing-fields
+					Job:new({
+						command = "chmod",
+						args = { "+x", start_stdio_script:absolute() },
+						on_exit = function(_, retval)
+							if retval ~= 0 then
+								vim.notify(
+									"RefactorEx: Failed to make start-stdio script executable",
+									vim.log.levels.ERROR
+								)
+							end
+							if callback then
+								callback(retval == 0)
+							end
+						end,
+					}):start()
+				else
+					vim.notify("RefactorEx: start-stdio script not found", vim.log.levels.ERROR)
+					if callback then
+						callback(false)
+					end
+				end
+			else
+				vim.notify("RefactorEx: Failed to apply stdio patch", vim.log.levels.ERROR)
+				if callback then
+					callback(false)
+				end
+			end
+		end,
+	}):start()
 end
 
 local function check_dependencies()
-	local required_commands = { "nc", "curl", "tar", "mix" }
+	local required_commands = { "nc", "curl", "tar", "mix", "patch" }
 	for _, cmd in ipairs(required_commands) do
 		if vim.fn.executable(cmd) ~= 1 then
 			error(string.format("Required command '%s' not found in PATH", cmd))
@@ -98,6 +123,84 @@ local function setup_server_config(opts)
 	end
 end
 
+local function download_refactorex(tar_file, callback)
+	vim.notify("RefactorEx: downloading and installing release source...", vim.log.levels.INFO)
+
+	---@diagnostic disable-next-line: missing-fields
+	Job:new({
+		command = "curl",
+		args = {
+			"--fail",
+			"-L",
+			"--create-dirs",
+			"-o",
+			tar_file:absolute(),
+			string.format("%s/archive/refs/tags/%s.tar.gz", M.config.github_url, refactorex_version),
+		},
+		on_exit = function(_, retval)
+			if retval ~= 0 then
+				vim.notify("RefactorEx: failed to download release source", vim.log.levels.ERROR)
+				M.installing = false
+				return
+			end
+			callback()
+		end,
+	}):start()
+end
+
+local function extract_tarball(tar_file, install_dir, callback)
+	---@diagnostic disable-next-line: missing-fields
+	Job:new({
+		command = "tar",
+		args = { "xzf", tar_file:absolute(), "-C", install_dir:absolute() },
+		on_exit = function(_, retval)
+			if retval ~= 0 then
+				vim.notify("RefactorEx: failed to extract source tarball", vim.log.levels.ERROR)
+				M.installing = false
+				return
+			end
+			tar_file:rm()
+			callback()
+		end,
+	}):start()
+end
+
+local function install_mix_dependencies(install_path, callback)
+	---@diagnostic disable-next-line: missing-fields
+	Job:new({
+		command = "mix",
+		args = { "deps.get" },
+		cwd = install_path:absolute(),
+		on_exit = function(_, retval)
+			if retval ~= 0 then
+				vim.notify("RefactorEx: failed to run mix deps.get", vim.log.levels.ERROR)
+				M.installing = false
+				return
+			end
+			callback()
+		end,
+	}):start()
+end
+
+local function compile_refactorex(install_path, callback)
+	---@diagnostic disable-next-line: missing-fields
+	Job:new({
+		command = "mix",
+		args = { "compile" },
+		cwd = install_path:absolute(),
+		on_exit = function(_, retval)
+			if retval ~= 0 then
+				vim.notify("RefactorEx: failed to compile", vim.log.levels.ERROR)
+				M.installing = false
+				return
+			end
+			M.installing = false
+			M.install_complete = true
+			callback()
+		end,
+	}):start()
+end
+
 function M.ensure_refactorex(callback, force_reinstall)
 	local install_dir = get_install_dir()
 	local tar_file = install_dir:joinpath(string.format("refactorex-%s.tar.gz", refactorex_version))
@@ -108,7 +211,7 @@ function M.ensure_refactorex(callback, force_reinstall)
 	end
 
 	if force_reinstall and refactorex_path:exists() then
-		vim.notify("Removing existing RefactorEx installation...", vim.log.levels.INFO)
+		vim.notify("RefactorEx: removing existing RefactorEx installation...", vim.log.levels.INFO)
 		refactorex_path:rm({ recursive = true })
 	elseif refactorex_path:exists() and not force_reinstall then
 		vim.notify("RefactorEx is already installed", vim.log.levels.INFO)
@@ -128,88 +231,28 @@ function M.ensure_refactorex(callback, force_reinstall)
 
 	M.installing = true
 
-	vim.notify("Downloading RefactorEx...", vim.log.levels.INFO)
-	---@diagnostic disable-next-line: missing-fields
-	local download_job = Job:new({
-		command = "curl",
-		args = {
-			"--fail",
-			"-L",
-			"--create-dirs",
-			"-o",
-			tar_file:absolute(),
-			string.format("%s/archive/refs/tags/%s.tar.gz", M.config.github_url, refactorex_version),
-		},
-		on_exit = function(_, retval)
-			if retval ~= 0 then
-				vim.notify("Failed to download RefactorEx", vim.log.levels.ERROR)
-				return
-			end
-
-			vim.notify("Download complete. Extracting...", vim.log.levels.INFO)
-			---@diagnostic disable-next-line: missing-fields
-			Job:new({
-				command = "tar",
-				args = { "xzf", tar_file:absolute(), "-C", install_dir:absolute() },
-				on_exit = function(_, retval2)
-					if retval2 ~= 0 then
-						vim.notify("Failed to extract RefactorEx", vim.log.levels.ERROR)
+	download_refactorex(tar_file, function()
+		extract_tarball(tar_file, install_dir, function()
+			local install_path = install_dir:joinpath(string.format("refactorex-%s", refactorex_version))
+			install_mix_dependencies(install_path, function()
+				apply_stdio_patch(install_path, function(success)
+					if not success then
+						M.installing = false
 						return
 					end
-					tar_file:rm()
-
-					vim.notify("Extraction complete. Installing mix dependencies...", vim.log.levels.INFO)
-
-					---@diagnostic disable-next-line: missing-fields
-					Job:new({
-						command = "mix",
-						args = { "deps.get" },
-						cwd = install_dir:joinpath(string.format("refactorex-%s", refactorex_version)):absolute(),
-						on_exit = function(_, retval3)
-							if retval3 ~= 0 then
-								vim.notify("Failed to run mix deps.get", vim.log.levels.ERROR)
-								M.installing = false
-								return
-							end
-
-							vim.notify("Dependencies installed. Compiling...", vim.log.levels.INFO)
-
-							---@diagnostic disable-next-line: missing-fields
-							Job:new({
-								command = "mix",
-								args = { "compile" },
-								cwd = install_dir
-									:joinpath(string.format("refactorex-%s", refactorex_version))
-									:absolute(),
-								on_exit = function(_, retval4)
-									if retval4 ~= 0 then
-										vim.notify("Failed to compile RefactorEx", vim.log.levels.ERROR)
-										M.installing = false
-										return
-									end
-
-									vim.notify("RefactorEx installation complete!", vim.log.levels.INFO)
-									M.installing = false
-									M.install_complete = true
-
-									if callback then
-										callback()
-									end
-
-									for _, pending_callback in ipairs(M.pending_server_starts) do
-										pending_callback()
-									end
-									M.pending_server_starts = {}
-								end,
-							}):start()
-						end,
-					}):start()
-				end,
-			}):start()
-		end,
-	})
-
-	download_job:start()
+					compile_refactorex(install_path, function()
+						if callback then
+							callback()
+						end
+						for _, pending_callback in ipairs(M.pending_server_starts) do
+							pending_callback()
+						end
+						M.pending_server_starts = {}
+					end)
+				end)
+			end)
+		end)
+	end)
 end
 
 local function create_commands()
@@ -218,24 +261,30 @@ local function create_commands()
 	end, {
 		desc = "Download or update the RefactorEx binary",
 	})
+
+	vim.api.nvim_create_user_command("RefactorExPatch", function()
+		local install_dir = get_install_dir()
+		local install_path = install_dir:joinpath(string.format("refactorex-%s", refactorex_version))
+
+		if not install_path:exists() then
+			vim.notify("RefactorEx installation not found", vim.log.levels.ERROR)
+			return
+		end
+
+		apply_stdio_patch(install_path)
+	end, {
+		desc = "Apply stdio patch to existing RefactorEx installation",
+	})
 end
 
-local function start_server(port)
-	local start_script =
-		Path:new(get_install_dir()):joinpath("refactorex-" .. refactorex_version .. "/bin/start"):absolute()
+local function start_lsp_server(opts, start_stdio_script)
+	opts.cmd = { start_stdio_script:absolute() }
+	setup_server_config(opts)
 
-	---@diagnostic disable-next-line: missing-fields
-	Job:new({
-		command = start_script,
-		args = { "--port", tostring(port) },
-		on_exit = function(stuff, return_val)
-			print(vim.inspect(stuff))
-			if return_val ~= 0 then
-				vim.notify(string.format("Failed to start RefactorEx server on port %d", port), vim.log.levels.ERROR)
-				return
-			end
-		end,
-	}):start()
+	vim.schedule(function()
+		lspconfig.refactorex.setup(opts)
+		vim.cmd("LspStart refactorex")
+	end)
 end
 
 function M.setup(opts)
@@ -248,39 +297,42 @@ function M.setup(opts)
 	end
 
 	create_commands()
-	setup_server_config(opts)
 
 	local server_started = false
 	vim.api.nvim_create_autocmd("FileType", {
 		pattern = "elixir",
 		callback = function()
 			if not server_started then
-				local port = find_available_port()
-				M.config.cmd = { "nc", "127.0.0.1", tostring(port) }
-				opts = vim.tbl_deep_extend("force", M.config, opts or {})
+				local install_path = Path:new(get_install_dir()):joinpath("refactorex-" .. refactorex_version)
+				local start_stdio_script = install_path:joinpath("bin/start-stdio")
+				local start_script = install_path:joinpath("bin/start")
 
-				local function initialize_server()
-					start_server(port)
-					server_started = true
-
-					vim.defer_fn(function()
-						if lspconfig.refactorex and lspconfig.refactorex.setup then
-							lspconfig.refactorex.setup(opts)
-							vim.cmd("LspStart refactorex")
+				if start_stdio_script:exists() then
+					start_lsp_server(opts, start_stdio_script)
+				elseif start_script:exists() then
+					-- this is only required for the 0.1.28 version that may have already been installed for some neovim users -
+					-- I switched from tcp transport to patching refactorex to use the stdio transport, however, some people may
+					-- already have 0.1.28 downloaded and installed. If `bin/start-stdio` doesn't exist, then it means that the
+					-- source hasn't been patched and it needs to be done.
+					--
+					-- When there's a new version of refactorex, this can be removed, because patching will be done as a part of
+					-- the new version installation process (or, possibly might not be needed at all, see:
+					-- https://github.com/gp-pereira/refactorex/pull/19)
+					apply_stdio_patch(install_path, function(success)
+						if success then
+							start_lsp_server(opts, start_stdio_script)
 						else
-							vim.notify("Failed to initialize refactorex LSP", vim.log.levels.ERROR)
+							vim.notify("RefactorEx: Failed to apply stdio patch", vim.log.levels.ERROR)
 						end
-					end, opts.server_start_timeout)
+					end)
+				else
+					M.ensure_refactorex(function()
+						vim.notify("RefactorEx: installed successfully, starting server...", vim.log.levels.INFO)
+						start_lsp_server(opts, start_stdio_script)
+					end)
 				end
 
-				local start_script = Path:new(get_install_dir())
-					:joinpath("refactorex-" .. refactorex_version .. "/bin/start")
-				if not start_script:exists() then
-					vim.notify("RefactorEx not found. Starting automatic download...", vim.log.levels.INFO)
-					M.ensure_refactorex(initialize_server)
-				else
-					initialize_server()
-				end
+				server_started = true
 			end
 		end,
 		once = true,
