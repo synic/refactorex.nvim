@@ -23,7 +23,6 @@ The following are required to use refactorex.nvim:
 
 - Neovim 0.8.0 or higher
 - Elixir and Mix installed on your system
-- plenary.nvim (https://github.com/nvim-lua/plenary.nvim)
 
 ==============================================================================
 3. INSTALLATION                                        *refactorex-installation*
@@ -32,9 +31,6 @@ With lazy.nvim: >
 
     {
       "synic/refactorex.nvim",
-      dependencies = {
-        "nvim-lua/plenary.nvim",
-      },
       ft = "elixir", -- only if you want to lazy load
       config = true,
     }
@@ -43,8 +39,10 @@ With lazy.nvim: >
 Without lazy.nvim (using packer.nvim): >
 
     use {
-      'synic/refactorex.nvim',
-      requires = { 'nvim-lua/plenary.nvim' },
+      "synic/refactorex.nvim",
+      config = function()
+        require("refactorex").setup()
+      end,
     }
 <
 
