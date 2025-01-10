@@ -51,17 +51,44 @@ Without lazy.nvim (using packer.nvim): >
 
                                                             *:RefactorExDownload*
 :RefactorExDownload
-    Downloads (or re-downloads) and installs the RefactorEx binary. If RefactorEx
-    is already installed, this command will remove the existing installation and
-    perform a fresh installation. This includes:
+    Downloads and installs the latest version of RefactorEx. If RefactorEx is
+    already installed, this command will remove the existing installation and
+    perform a fresh installation. If the LSP server is running, it will be
+    restarted with the new version. This includes:
     1. Downloading the RefactorEx archive
     2. Extracting the archive
     3. Running `mix deps.get`
     4. Running `mix compile`
+    5. Restarting the LSP server if it's running
 
 Note: The plugin will automatically download and install RefactorEx when needed,
 so manual use of `:RefactorExDownload` is only necessary if you want to force a
 fresh installation.
+
+==============================================================================
+4. CONFIGURATION                                     *refactorex-configuration*
+
+The following options can be passed to the setup function:
+
+                                                    *refactorex-config-auto_update*
+auto_update     (boolean)
+                When true, automatically checks for updates when the plugin loads.
+                Default: true >
+
+    require('refactorex').setup({
+        auto_update = false  -- disable automatic update checks
+    })
+<
+
+                                                    *refactorex-config-pin_version*
+pin_version     (string)
+                When set, forces the plugin to use this specific version of
+                RefactorEx. This overrides auto_update. Example: "0.1.30" >
+
+    require('refactorex').setup({
+        pin_version = "0.1.30"  -- force specific version
+    })
+<
 
 ==============================================================================
 vim:tw=78:ts=8:ft=help:norl:
