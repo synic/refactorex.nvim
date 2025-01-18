@@ -1,6 +1,3 @@
-local lspconfig = require("lspconfig")
-local configs = require("lspconfig.configs")
-
 local github_url = "https://github.com/gp-pereira/refactorex"
 
 local function path_join(...)
@@ -37,7 +34,14 @@ local M = {
 		filetypes = { "elixir" },
 		cmd = {},
 		root_dir = function(fname)
-			return require("lspconfig").util.root_pattern("mix.exs")(fname)
+			local current = vim.fn.expand(fname)
+			while current ~= "/" do
+				if vim.fn.filereadable(current .. "/mix.exs") == 1 then
+					return current
+				end
+				current = vim.fn.fnamemodify(current, ":h")
+			end
+			return vim.fn.getcwd()
 		end,
 		settings = {},
 		github_url = github_url,
@@ -57,33 +61,25 @@ local function check_dependencies()
 	end
 end
 
-local function setup_server_config(opts)
-	if not configs.refactorex then
-		configs.refactorex = {
-			default_config = {
-				cmd = opts.cmd,
-				filetypes = opts.filetypes,
-				root_dir = opts.root_dir,
-				settings = opts.settings,
-				capabilities = {
-					textDocumentSync = {
-						openClose = true,
-						change = 1,
-						save = { includeText = true },
-					},
-					codeActionProvider = {
-						resolveProvider = true,
-					},
-					renameProvider = {
-						prepareProvider = true,
-					},
-				},
+local function get_client_config(opts)
+	return {
+		name = "refactorex",
+		cmd = opts.cmd,
+		filetypes = opts.filetypes,
+		root_dir = opts.root_dir(vim.fn.expand("%:p")),
+		settings = opts.settings,
+		capabilities = vim.tbl_deep_extend("force", vim.lsp.protocol.make_client_capabilities(), {
+			textDocumentSync = {
+				openClose = true,
+				change = 1,
+				save = { includeText = true },
 			},
-			docs = {
-				description = string.format("RefactorEx Language Server for Elixir\n%s", M.config.github_url),
+			codeActionProvider = {
+				resolveProvider = true,
 			},
-		}
-	end
+			renameProvider = true,
+		}),
+	}
 end
 
 local function async_spawn(cmd, args, cwd, on_exit)
@@ -255,25 +251,24 @@ end
 local function start_lsp_server(opts, install_path, callback)
 	local start_script = path_join(install_path, "bin/start")
 	opts.cmd = { start_script, "--stdio" }
-	setup_server_config(opts)
 
 	local function start_server()
-		lspconfig.refactorex.setup(opts)
-		vim.cmd("LspStart refactorex")
-		if callback then
-			callback()
-		end
-	end
-
-	vim.schedule(function()
+		local client_config = get_client_config(opts)
 		local client = vim.lsp.get_clients({ name = "refactorex" })[1]
+
 		if client then
 			client.stop()
-			vim.defer_fn(start_server, 100)
-		else
-			start_server()
 		end
-	end)
+
+		vim.defer_fn(function()
+			vim.lsp.start(client_config)
+			if callback then
+				callback()
+			end
+		end, client and 100 or 0)
+	end
+
+	vim.schedule(start_server)
 end
 
 function M.ensure_refactorex(callback, opts)
