@@ -1,24 +1,58 @@
+---@alias FileType string
+---@alias RootDirFn fun(fname: string): string
+---@alias LspSettings table<string, any>
+---@alias OnExitCallback fun(success: boolean, stdout: string[], stderr: string[])
+---@alias InstallCallback fun(install_path: string|nil)
+---@alias VersionCallback fun(version: string|nil)
+
+---@class Config
+---@field filetypes FileType[]
+---@field cmd string[]
+---@field root_dir RootDirFn
+---@field settings LspSettings
+---@field github_url string
+---@field auto_update boolean
+---@field pin_version string|nil
+
+---@class RefactorEx
+---@field config Config
+---@field installing boolean
+---@field pending_server_starts InstallCallback[]
+
 local github_url = "https://github.com/gp-pereira/refactorex"
 
+---@vararg string
+---@return string
 local function path_join(...)
 	local parts = { ... }
+	---@diagnostic disable-next-line: undefined-field
+	---@diagnostic disable-next-line: redundant-return-value
 	return table.concat(parts, "/"):gsub("//+", "/")
 end
 
+---@param path string
+---@return boolean
 local function file_exists(path)
+	---@diagnostic disable-next-line: undefined-field
 	local stat = vim.loop.fs_stat(path)
 	return stat and stat.type == "file"
 end
 
+---@param path string
+---@return boolean
 local function dir_exists(path)
+	---@diagnostic disable-next-line: undefined-field
 	local stat = vim.loop.fs_stat(path)
 	return stat and stat.type == "directory"
 end
 
+---@param path string
+---@return number
 local function mkdir_p(path)
 	return vim.fn.mkdir(path, "p")
 end
 
+---@param path string
 local function rmdir_rf(path)
 	if vim.fn.has("win32") == 1 then
 		vim.fn.system(string.format('rd /s /q "%s"', path))
@@ -27,6 +61,7 @@ local function rmdir_rf(path)
 	end
 end
 
+---@diagnostic disable-next-line: param-type-mismatch
 local install_dir = path_join(vim.fn.stdpath("data"), "refactorex")
 
 local M = {
@@ -61,6 +96,8 @@ local function check_dependencies()
 	end
 end
 
+---@param opts Config
+---@return table
 local function get_client_config(opts)
 	return {
 		name = "refactorex",
@@ -82,13 +119,20 @@ local function get_client_config(opts)
 	}
 end
 
+---@param cmd string
+---@param args string[]
+---@param cwd string|nil
+---@param on_exit OnExitCallback|nil
 local function async_spawn(cmd, args, cwd, on_exit)
 	local stdout, stderr = {}, {}
 
+	---@diagnostic disable-next-line: undefined-field
 	local stdout_pipe = vim.loop.new_pipe(false)
+	---@diagnostic disable-next-line: undefined-field
 	local stderr_pipe = vim.loop.new_pipe(false)
 
 	local handle
+	---@diagnostic disable-next-line: undefined-field
 	handle = vim.loop.spawn(cmd, {
 		args = args,
 		cwd = cwd,
@@ -105,12 +149,14 @@ local function async_spawn(cmd, args, cwd, on_exit)
 	end)
 
 	if handle then
+		---@diagnostic disable-next-line: undefined-field
 		vim.loop.read_start(stdout_pipe, function(_, data)
 			if data then
 				table.insert(stdout, data)
 			end
 		end)
 
+		---@diagnostic disable-next-line: undefined-field
 		vim.loop.read_start(stderr_pipe, function(_, data)
 			if data then
 				table.insert(stderr, data)
@@ -125,6 +171,9 @@ local function async_spawn(cmd, args, cwd, on_exit)
 	end
 end
 
+---@param tar_file string
+---@param version string
+---@param callback function
 local function download_refactorex(tar_file, version, callback)
 	async_spawn(
 		"curl",
@@ -148,6 +197,8 @@ local function download_refactorex(tar_file, version, callback)
 	)
 end
 
+---@param tar_file string
+---@param callback function
 local function extract_tarball(tar_file, callback)
 	async_spawn(
 		"tar",
@@ -171,6 +222,8 @@ local function extract_tarball(tar_file, callback)
 	)
 end
 
+---@param msg string
+---@param install_path string|nil
 local function handle_install_error(msg, install_path)
 	vim.notify("RefactorEx: " .. msg, vim.log.levels.ERROR)
 	M.installing = false
@@ -200,11 +253,14 @@ local function compile_refactorex(install_path, callback)
 	end)
 end
 
+---@return string[]
 local function get_installed_versions()
 	local versions = {}
+	---@diagnostic disable-next-line: undefined-field
 	local handle = vim.loop.fs_scandir(install_dir)
 	if handle then
 		while true do
+			---@diagnostic disable-next-line: undefined-field
 			local name = vim.loop.fs_scandir_next(handle)
 			if not name then
 				break
@@ -220,6 +276,7 @@ local function get_installed_versions()
 	return versions
 end
 
+---@param callback VersionCallback
 local function get_latest_version(callback)
 	async_spawn(
 		"curl",
@@ -236,6 +293,7 @@ local function get_latest_version(callback)
 			end
 
 			local response = table.concat(stdout)
+			---@diagnostic disable-next-line: undefined-field
 			local version = response:match('"name":%s*"([^"]+)"')
 			if version then
 				version = version:match("^%s*(.-)%s*$")
@@ -248,6 +306,9 @@ local function get_latest_version(callback)
 	)
 end
 
+---@param opts Config
+---@param install_path string
+---@param callback function|nil
 local function start_lsp_server(opts, install_path, callback)
 	local start_script = path_join(install_path, "bin/start")
 	opts.cmd = { start_script, "--stdio" }
@@ -271,6 +332,8 @@ local function start_lsp_server(opts, install_path, callback)
 	vim.schedule(start_server)
 end
 
+---@param callback InstallCallback|nil
+---@param opts Config|nil
 function M.ensure_refactorex(callback, opts)
 	local function install_version(version)
 		local install_path = path_join(install_dir, "refactorex-" .. version)
@@ -359,6 +422,7 @@ function M.ensure_refactorex(callback, opts)
 	end
 end
 
+---@param opts? table
 function M.setup(opts)
 	opts = vim.tbl_deep_extend("force", M.config, opts or {})
 

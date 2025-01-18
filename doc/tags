@@ -1,0 +1,12 @@
+:RefactorExDownload	refactorex.txt	/*:RefactorExDownload*
+refactorex	refactorex.txt	/*refactorex*
+refactorex-commands	refactorex.txt	/*refactorex-commands*
+refactorex-config-auto_update	refactorex.txt	/*refactorex-config-auto_update*
+refactorex-config-pin_version	refactorex.txt	/*refactorex-config-pin_version*
+refactorex-configuration	refactorex.txt	/*refactorex-configuration*
+refactorex-contents	refactorex.txt	/*refactorex-contents*
+refactorex-installation	refactorex.txt	/*refactorex-installation*
+refactorex-introduction	refactorex.txt	/*refactorex-introduction*
+refactorex-prerequisites	refactorex.txt	/*refactorex-prerequisites*
+refactorex.nvim	refactorex.txt	/*refactorex.nvim*
+refactorex.txt	refactorex.txt	/*refactorex.txt*
