@@ -8,6 +8,9 @@ CONTENTS                                                    *refactorex-contents
     2. Prerequisites .......................... |refactorex-prerequisites|
     3. Installation ........................... |refactorex-installation|
     4. Commands ............................... |refactorex-commands|
+    5. Configuration .......................... |refactorex-configuration|
+    6. Usage ................................. |refactorex-usage|
+    7. Key Bindings .......................... |refactorex-keybindings|
 
 ==============================================================================
 1. INTRODUCTION                                         *refactorex-introduction*
@@ -89,6 +92,83 @@ pin_version     (string)
         pin_version = "0.1.30"  -- force specific version
     })
 <
+
+==============================================================================
+5. USAGE                                                    *refactorex-usage*
+
+refactorex.nvim integrates with Neovim's built-in LSP system through two main
+functions:
+
+                                                    *refactorex-usage-code-action*
+vim.lsp.buf.code_action()
+    Shows available code actions for the current context. For example, with the
+    following code: >
+
+        def ship(item_id, quantity) do
+          items = Inventory.take!(item_id, quantity)
+          ...
+        end
+<
+    If you highlight the `items =` line and run `:lua vim.lsp.buf.code_action()`,
+    you'll see the option to "Introduce IO.inspect". Selecting this will modify
+    the line to: >
+
+        items = Inventory.take!(item_id, quantity) |> IO.inspect()
+<
+    Many refactoring options are context-specific. See
+    https://github.com/gp-pereira/refactorex for more examples.
+
+                                                      *refactorex-usage-rename*
+vim.lsp.buf.rename()
+    Allows renaming a symbol and all its occurrences. Currently only works with
+    local symbols in the same file. Position the cursor on a symbol and run
+    `:lua vim.lsp.buf.rename()` to use this feature.
+
+==============================================================================
+6. KEY BINDINGS                                        *refactorex-keybindings*
+
+While the plugin doesn't set any default keybindings, here's an example of how
+to configure them using an LspAttach autocmd: >
+
+    vim.api.nvim_create_autocmd("LspAttach", {
+        group = vim.api.nvim_create_augroup("UserLspConfig", {}),
+        callback = function(event)
+            -- code actions keybinding, in normal and visual mode
+            vim.keymap.set(
+                "n",
+                "ga",
+                vim.lsp.buf.code_action,
+                { buffer = true, desc = "Show code actions" }
+            )
+            vim.keymap.set(
+                "v",
+                "ga",
+                vim.lsp.buf.code_action,
+                { buffer = true, desc = "Show code actions" }
+            )
+
+            -- rename keybinding, in normal and visual mode
+            vim.keymap.set(
+                "n",
+                "ga",
+                vim.lsp.buf.rename,
+                { buffer = true, desc = "Rename symbol" }
+            )
+            vim.keymap.set(
+                "v",
+                "ga",
+                vim.lsp.buf.rename,
+                { buffer = true, desc = "Rename symbol" }
+            )
+        end
+    })
+<
+
+The `buffer = true` option makes these keybindings local to buffers with an
+attached LSP server. For filetype-specific bindings, you can check
+`vim.bo[event.buf].filetype`.
+
+For more information about LSP configuration, see |lsp|.
 
 ==============================================================================
 vim:tw=78:ts=8:ft=help:norl:
