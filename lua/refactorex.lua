@@ -233,24 +233,63 @@ local function handle_install_error(msg, install_path)
 end
 
 local function install_mix_dependencies(install_path, callback)
-	async_spawn("mix", { "deps.get" }, install_path, function(success)
-		if not success then
-			handle_install_error("failed to run mix deps.get", install_path)
-			return
-		end
-		callback()
-	end)
+	local refactorex_path = path_join(install_path, "refactorex")
+	local refactorex_lsp_path = path_join(install_path, "refactorex_lsp")
+	
+	if dir_exists(refactorex_path) and dir_exists(refactorex_lsp_path) then
+		async_spawn("mix", { "deps.get" }, refactorex_path, function(success)
+			if not success then
+				handle_install_error("failed to run mix deps.get in refactorex", install_path)
+				return
+			end
+			async_spawn("mix", { "deps.get" }, refactorex_lsp_path, function(success)
+				if not success then
+					handle_install_error("failed to run mix deps.get in refactorex_lsp", install_path)
+					return
+				end
+				callback()
+			end)
+		end)
+	else
+		async_spawn("mix", { "deps.get" }, install_path, function(success)
+			if not success then
+				handle_install_error("failed to run mix deps.get", install_path)
+				return
+			end
+			callback()
+		end)
+	end
 end
 
 local function compile_refactorex(install_path, callback)
-	async_spawn("mix", { "compile" }, install_path, function(success)
-		if not success then
-			handle_install_error("failed to compile", install_path)
-			return
-		end
-		M.installing = false
-		callback()
-	end)
+	local refactorex_path = path_join(install_path, "refactorex")
+	local refactorex_lsp_path = path_join(install_path, "refactorex_lsp")
+	
+	if dir_exists(refactorex_path) and dir_exists(refactorex_lsp_path) then
+		async_spawn("mix", { "compile" }, refactorex_path, function(success)
+			if not success then
+				handle_install_error("failed to compile refactorex", install_path)
+				return
+			end
+			async_spawn("mix", { "compile" }, refactorex_lsp_path, function(success)
+				if not success then
+					handle_install_error("failed to compile refactorex_lsp", install_path)
+					return
+				end
+				M.installing = false
+				callback()
+			end)
+		end)
+	else
+		async_spawn("mix", { "compile" }, install_path, function(success)
+			if not success then
+				handle_install_error("failed to compile", install_path)
+				return
+			end
+			M.installing = false
+			callback()
+		end)
+	end
 end
 
 ---@return string[]
@@ -318,6 +357,7 @@ local function start_lsp_server(opts, install_path, callback)
 		local client = vim.lsp.get_clients({ name = "refactorex" })[1]
 
 		if client then
+			---@diagnostic disable-next-line: missing-parameter
 			client.stop()
 		end
 
